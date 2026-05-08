@@ -6,7 +6,7 @@ import xlwings as xw
 from rich import print
 from dotenv import load_dotenv
 from datetime import datetime
-from selenium.webdriver.by import By
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
