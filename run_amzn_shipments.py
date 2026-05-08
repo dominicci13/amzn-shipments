@@ -22,6 +22,9 @@ win_user: str = os.getlogin()
 load_dotenv()
 username: str = os.getenv("AMZN_email")
 password: str = os.getenv("AMZN_pass")
+sender_email: str = os.getenv("SENDER_EMAIL", "")
+to_email: list[str] = [e.strip() for e in os.getenv("TO_EMAIL", "").split(",") if e.strip()]
+cc_email: list[str] = [e.strip() for e in os.getenv("CC_EMAIL", "").split(",") if e.strip()]
 
 #Set Chrome User Data Directory
 user_data_dir: str = f"C:/ChromeAutomationProfile"
@@ -78,9 +81,9 @@ while True:
         #If the user pressed "Yes", then start the process
         if BtnPressed == 7:
             if nowHour >= StartHour:
-                print(f"'[INFO]' Shipment updates will be worked on next Tuesday at {StartHour}:{StartMin} AM.")
+                print(f"[cyan][INFO][/cyan] Shipment updates will be worked on next Tuesday at {StartHour}:{StartMin} AM.")
             else:
-                print(f"'[INFO]' Shipment updates will be worked today at {StartHour}:{StartMin} AM.")
+                print(f"[cyan][INFO][/cyan] Shipment updates will be worked today at {StartHour}:{StartMin} AM.")
 
             #Sleep until just before the Start time
             time.sleep(max(SleepTime - 1, 0))
@@ -111,12 +114,12 @@ while True:
                 opening_browser = False
 
             except (SessionNotCreatedException, RuntimeError):
-                print("'[ERROR]' Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
+                print("[bold red][ERROR][/bold red] Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
                 custom_functions.kill_app("chrome")
                 time.sleep(5)
 
             except PermissionError:
-                print("'[ERROR]' Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
+                print("[bold red][ERROR][/bold red] Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
                 custom_functions.kill_app("uc_driver")
                 time.sleep(5)
 
@@ -137,11 +140,11 @@ while True:
                     root = "Focus Home"
 
             #Delete all files in the root directory for each account
-            print(f"'[INFO]' Removing all files in the root directory for '{root}'.")
+            print(f"[cyan][INFO][/cyan] Removing all files in the root directory for [cyan]{root}[/cyan].")
             for file in os.listdir(f"{directory}/Amazon/Shipments/{root}/"):
                 os.remove(os.path.join(f"{directory}/Amazon/Shipments/{root}/", file))
 
-            print(f"'[INFO]' Navigating to '{root}' account.")
+            print(f"[cyan][INFO][/cyan] Navigating to [cyan]{root}[/cyan] account.")
             driver.get(url)
             driver.switch_to_window(0)
 
@@ -151,14 +154,14 @@ while True:
                     code = accounts.Amazon_login(driver, username, password)
 
                     if not code:
-                        print("'[ERROR]' Failed to log in to Amazon. Trying again.")
+                        print("[bold red][ERROR][/bold red] Failed to log in to Amazon. Trying again.")
                         driver.get(url)
                         driver.switch_to_window(0)
 
             except TimeoutException:
                 pass
 
-            print("'[INFO]' Getting shipments.")
+            print("[cyan][INFO][/cyan] Getting shipments.")
             driver.get("https://sellercentral.amazon.com/gp/ssof/shipping-queue.html/ref=xx_fbashipq_favb_xx#fbashipment")
             time.sleep(2)
             driver.switch_to_window(0)
@@ -187,7 +190,7 @@ while True:
 
                 time.sleep(3)
             except TimeoutException:
-                print(f"'[INFO]' No results on '{root}' account. Moving to next account.")
+                print(f"[cyan][INFO][/cyan] No results on [cyan]{root}[/cyan] account. Moving to next account.")
                 continue
 
             #TODO: USE THE NUMBER FOR THE DESIRED RANGE
@@ -245,11 +248,10 @@ while True:
                 time.sleep(2)
 
             except TimeoutException:
-                #Take a screenshot if the element is not found
-                print("'[TimeoutException]' Element not found.")
+                print("[bold red][TimeoutException][/bold red] Element not found.")
                 driver.save_screenshot(f"Shipments error.png")
                 driver.quit()
-                quit()
+                raise RuntimeError("Critical element not found; aborting.")
 
             try:
                 #Select only orders with "Closed" status
@@ -270,17 +272,16 @@ while True:
                 time.sleep(2)
 
             except TimeoutException:
-                #Take a screenshot if the element is not found
-                print("'[TimeoutException]' Element not found.")
+                print("[bold red][TimeoutException][/bold red] Element not found.")
                 driver.save_screenshot(f"Shipments error.png")
                 driver.quit()
-                quit()
+                raise RuntimeError("Critical element not found; aborting.")
 
             page = 1
             getting_shipments = True
             while getting_shipments:
                 #Download the table data
-                print("'[INFO]' Downloading file.")
+                print("[cyan][INFO][/cyan] Downloading file.")
                 driver.find_element(
                     By.CSS_SELECTOR,
                     "#export-link-container > a"
@@ -292,7 +293,7 @@ while True:
                 #Extract the downloaded file and move it to the corresponding location
                 for file in os.listdir(f"{directory}/downloaded_files/"):
                     if file.endswith("Z.csv"):
-                        print(f"'[INFO]' File '{file}' downloaded.")
+                        print(f"[cyan][INFO][/cyan] File [cyan]{file}[/cyan] downloaded.")
                         shutil.move(
                             f"{directory}/downloaded_files/{file}",
                             f"{directory}/Amazon/Shipments/{root}/Shipments - Page {page}.csv"
@@ -314,7 +315,7 @@ while True:
                     page += 1
 
                 except TimeoutException:
-                    print("'[INFO]' No more pages to download.")
+                    print("[cyan][INFO][/cyan] No more pages to download.")
                     getting_shipments = False
 
         #Close Firefox
@@ -325,7 +326,7 @@ while True:
         Date = datetime.now().strftime("%m/%d/%Y")
         
         #Update the queries in the "Shipment" workbook
-        print("'[INFO]' Updating queries in the 'Shipment' workbook.")
+        print("[cyan][INFO][/cyan] Updating queries in the [cyan]Shipment[/cyan] workbook.")
         ShipmentWbPath = f"{directory}/Amazon/Reports/Shipments.xlsm"
         ShipmentWb = xw.Book(ShipmentWbPath)
         DataValSh = ShipmentWb.sheets("DataVal")
@@ -346,26 +347,26 @@ while True:
         Refresh()
         time.sleep(30)
 
-        print("'[INFO]' Saving and closing the workbook.")
+        print("[cyan][INFO][/cyan] Saving and closing the workbook.")
         ShipmentWb.save()
         ShipmentWb.close()
         time.sleep(60)
 
         if send:
             #Send email notification
-            print("'[INFO]' Sending email.")
+            print("[cyan][INFO][/cyan] Sending email.")
             outlook.send_email(
-                account="user@example.com",
+                account=sender_email,
                 subject=f"Shipments Report - {Date}",
                 body=body,
-                to=["user@example.com", "user@example.com"],
-                cc=["user@example.com"],
+                to=to_email,
+                cc=cc_email,
                 attachments=[ShipmentWbPath],
                 show=True,
                 send=True
             )
 
-            print("'[INFO]' Email has been sent.")
+            print("[cyan][INFO][/cyan] Email has been sent.")
 
     #Sleep 60 seconds before starting over
     time.sleep(60)
