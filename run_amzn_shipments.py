@@ -1,39 +1,39 @@
 import os
 import time
 import shutil
-import ctypes
 import traceback
 import xlwings as xw
 from rich import print
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
-from selenium.webdriver.common.by import By
+from datetime import datetime
+from selenium.webdriver.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from fc_utils import chrome, accounts, custom_functions, outlook
-from selenium.common.exceptions import TimeoutException, SessionNotCreatedException
+from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
+from fc_utils.config_utils import get_env
+from fc_utils.schedule_utils import run_on_schedule
+from fc_utils.accounts import AMAZON_ACCOUNT_NAMES
+from selenium.common.exceptions import TimeoutException
 
-###############################################################################################################################################
-#Get the user and working directory
 directory: str = os.getcwd()
-win_user: str = os.getlogin()
 
-#Get Seller Central credentials from environment
 load_dotenv()
 username: str = os.getenv("AMZN_email")
 password: str = os.getenv("AMZN_pass")
 sender_email: str = os.getenv("SENDER_EMAIL", "")
 to_email: list[str] = [e.strip() for e in os.getenv("TO_EMAIL", "").split(",") if e.strip()]
 cc_email: list[str] = [e.strip() for e in os.getenv("CC_EMAIL", "").split(",") if e.strip()]
+user_data_dir: str = get_env("CHROME_USER_DATA_DIR", required=True)
 
-#Set Chrome User Data Directory
-user_data_dir: str = f"C:/ChromeAutomationProfile"
+amzn_accounts = accounts.Amazon()
+shipment_wb_path: str = f"{directory}/Amazon/Reports/Shipments.xlsm"
 
-#Get all the Amazon accounts
-Accounts = accounts.Amazon()
+# within_range selects the date filter applied to shipments:
+# 1=All  2=24h  3=1 week  4=30 days  5=90 days  6=1 year  7=Custom
+within_range: int = 6
+_range_map = {1: "ALL", 2: "1", 3: "7", 4: "30", 5: "90", 6: "365", 7: "CUSTOM"}
+range_value: str = _range_map[within_range]
 
-##################################################################################################################################################
-# Create the body of the email
 body = """
 Good morning,<br><br>
 Please find attached the Shipments report updated for today.<br><br>
@@ -41,106 +41,22 @@ If any questions, please let me know.<br><br>
 Thanks,<br><br>
 """
 
-##################################################################################################################################################
-def seconds_until_target(TargetTime: str):
-    #Calculate the number of seconds until the target time
-    now = datetime.now()
-    TargetTime = datetime.strptime(TargetTime, "%H:%M:%S").replace(year=now.year, month=now.month, day=now.day)
 
-    if TargetTime < now:
-        TargetTime += timedelta(days=1)
+def main() -> None:
+    """Download Amazon shipment CSVs for each account and email the refreshed report.
 
-    return (TargetTime - now).total_seconds()
+    Scrapes closed shipments within the configured date range, saves each page
+    as a CSV, refreshes the Shipments workbook, and emails the report if it
+    has not already been sent today.
+    """
+    driver = None
+    try:
+        driver = chrome.start_browser(user_data_dir, "Default", headless=True)
 
-##################################################################################################################################################
-def ShouldRun() -> bool:
-    #Check if today is Tuesday
-    today: str = datetime.now().strftime("%A")
+        for account, url in amzn_accounts.items():
+            root = AMAZON_ACCOUNT_NAMES[account]
 
-    return today in ["Tuesday"]
-
-###############################################################################################################################################
-#Ask the user if they want to start the process now
-BtnPressed = ctypes.windll.user32.MessageBoxW(
-    0,
-    "Do you want to start the script now?",
-    "Amazon Shipments",
-    4 | 0x20
-)
-
-while True:
-    #Time to start
-    StartTime = "09:00:00"
-    StartHour = int(StartTime.split(":")[0])
-    StartMin = StartTime.split(":")[1]
-
-    if ShouldRun():
-        SleepTime = seconds_until_target(StartTime)
-        nowHour = int(datetime.now().strftime("%H"))
-
-        #If the user pressed "Yes", then start the process
-        if BtnPressed == 7:
-            if nowHour >= StartHour:
-                print(f"[cyan][INFO][/cyan] Shipment updates will be worked on next Tuesday at {StartHour}:{StartMin} AM.")
-            else:
-                print(f"[cyan][INFO][/cyan] Shipment updates will be worked today at {StartHour}:{StartMin} AM.")
-
-            #Sleep until just before the Start time
-            time.sleep(max(SleepTime - 1, 0))
-
-            #Loop to ensure that we catch the exact time
-            while datetime.now().strftime("%H:%M:%S") != StartTime:
-                time.sleep(0.5)
-
-            #Get today's name
-            today: str = datetime.now().strftime("%A")
-
-            if today != "Tuesday":
-                continue
-
-        #Reset the value of the button
-        BtnPressed = 7
-
-        ###############################################################################################################################################
-        #Initialize Chrome
-        opening_browser = True
-        while opening_browser:
-            try:
-                driver: object = chrome.start_browser(
-                    user_data_dir,
-                    "Default",
-                    headless=True
-                )
-                opening_browser = False
-
-            except (SessionNotCreatedException, RuntimeError):
-                print("[bold red][ERROR][/bold red] Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
-                custom_functions.kill_app("chrome")
-                time.sleep(5)
-
-            except PermissionError:
-                print("[bold red][ERROR][/bold red] Failed to open the Chrome. It seems Chrome was already open. Killing the application and retrying.")
-                custom_functions.kill_app("uc_driver")
-                time.sleep(5)
-
-        ###############################################################################################################################################
-        for account, url in Accounts.items():
-            match account:
-                case "FocusCam":
-                    root = "SellerOrg Corp"
-                case "LifeS":
-                    root = "Lifestyle By Focus"
-                case "XtraB":
-                    root = "XtraBargains"
-                case "KnoxGear":
-                    root = "Knox Gear"
-                case "Apple":
-                    root = "Apple Renewed Focus"
-                case "FocusHome":
-                    root = "Focus Home"
-
-            #Delete all files in the root directory for each account
-            print(f"[cyan][INFO][/cyan] Removing all files in the root directory for [cyan]{root}[/cyan].")
+            print(f"[cyan][INFO][/cyan] Removing all files in the shipments folder for [cyan]{root}[/cyan].")
             for file in os.listdir(f"{directory}/Amazon/Shipments/{root}/"):
                 os.remove(os.path.join(f"{directory}/Amazon/Shipments/{root}/", file))
 
@@ -151,13 +67,11 @@ while True:
             try:
                 code = None
                 while not code:
-                    code = accounts.Amazon_login(driver, username, password)
-
+                    code = accounts.amazon_login(driver, username, username, password)
                     if not code:
                         print("[bold red][ERROR][/bold red] Failed to log in to Amazon. Trying again.")
                         driver.get(url)
                         driver.switch_to_window(0)
-
             except TimeoutException:
                 pass
 
@@ -166,81 +80,39 @@ while True:
             time.sleep(2)
             driver.switch_to_window(0)
 
-            #If "Feedback" banner pops-up, close it
+            # Dismiss the feedback banner if present
             try:
                 WebDriverWait(driver, 5).until(EC.element_to_be_clickable((
-                    By.CSS_SELECTOR,
-                    "#vibes-close-button"
+                    By.CSS_SELECTOR, "#vibes-close-button"
                 ))).click()
             except TimeoutException:
                 pass
 
-            #Increase the range of results per page from 25 to 100
             try:
                 WebDriverWait(driver, 5).until(EC.element_to_be_clickable((
-                    By.CSS_SELECTOR,
-                    "#pagination-dropdown"
+                    By.CSS_SELECTOR, "#pagination-dropdown"
                 ))).click()
-
                 custom_functions.shadow_element(
                     driver,
                     "#pagination-dropdown > kat-dropdown",
                     "div > div:nth-child(3) > div > div > div > slot:nth-child(2) > kat-option:nth-child(4)"
                 )
-
                 time.sleep(3)
             except TimeoutException:
                 print(f"[cyan][INFO][/cyan] No results on [cyan]{root}[/cyan] account. Moving to next account.")
                 continue
 
-            #TODO: USE THE NUMBER FOR THE DESIRED RANGE
-            #* For "All" = 1
-            #* For "Within 24 hours" = 2
-            #* For "Within 1 week" = 3
-            #* For "Within 30 days" = 4
-            #* For "Within 90 days" = 5
-            #* For "Within 1 year" = 6
-            #* For "Custom date range" = 7
-
-            #Set the value for the desired range
-            within_range = 6
-            match within_range:
-                case 1:
-                    range_value = "ALL" #All
-                case 2:
-                    range_value = "1" #Within 24 hours
-                case 3:
-                    range_value = "7" #Within 1 week
-                case 4:
-                    range_value = "30" #Within 30 days
-                case 5:
-                    range_value = "90" #Within 90 days
-                case 6:
-                    range_value = "365" #Within 1 year
-                case 7:
-                    range_value = "CUSTOM" #Custom date range
-
             try:
-                #Select the desired range
                 WebDriverWait(driver, 10).until(EC.element_to_be_clickable((
-                    By.CSS_SELECTOR,
-                    "input[type='text'][value='Last updated']"
+                    By.CSS_SELECTOR, "input[type='text'][value='Last updated']"
                 ))).click()
 
-                #Get the parent element of the radio button
-                parent = driver.find_element(
-                    By.CLASS_NAME,
-                    "date-filter-radio-inline"
-                )
-
-                #Find the input element for the radio button by its value or label
+                parent = driver.find_element(By.CLASS_NAME, "date-filter-radio-inline")
                 radio_input = parent.find_element(
                     By.CSS_SELECTOR,
                     f"input[type='radio'][value='{range_value}']"
                 )
-
-                #Find the clickable icon *after* the input - sibling span
-                #and click it to select the radio button
+                # Click the sibling span — the input itself is not directly clickable
                 radio_input.find_element(
                     By.XPATH,
                     "./following-sibling::span[contains(@class, 'kat-radiobutton-icon')]"
@@ -248,23 +120,16 @@ while True:
                 time.sleep(2)
 
             except TimeoutException:
-                print("[bold red][TimeoutException][/bold red] Element not found.")
-                driver.save_screenshot(f"Shipments error.png")
-                driver.quit()
+                print("[bold red][TimeoutException][/bold red] Date filter element not found.")
+                driver.save_screenshot("Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
             try:
-                #Select only orders with "Closed" status
                 WebDriverWait(driver, 10).until(EC.element_to_be_clickable((
-                    By.CSS_SELECTOR,
-                    "input[type='text'][value='Status']"
+                    By.CSS_SELECTOR, "input[type='text'][value='Status']"
                 ))).click()
 
-                parent = driver.find_element(
-                    By.CLASS_NAME,
-                    "shipment-status-filter-inline"
-                )
-
+                parent = driver.find_element(By.CLASS_NAME, "shipment-status-filter-inline")
                 parent.find_element(
                     By.CSS_SELECTOR,
                     "kat-checkbox[label='Closed'][value='CLOSED']"
@@ -272,25 +137,17 @@ while True:
                 time.sleep(2)
 
             except TimeoutException:
-                print("[bold red][TimeoutException][/bold red] Element not found.")
-                driver.save_screenshot(f"Shipments error.png")
-                driver.quit()
+                print("[bold red][TimeoutException][/bold red] Status filter element not found.")
+                driver.save_screenshot("Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
             page = 1
             getting_shipments = True
             while getting_shipments:
-                #Download the table data
                 print("[cyan][INFO][/cyan] Downloading file.")
-                driver.find_element(
-                    By.CSS_SELECTOR,
-                    "#export-link-container > a"
-                ).click()
-
-                #Wait for the file to download
+                driver.find_element(By.CSS_SELECTOR, "#export-link-container > a").click()
                 time.sleep(5)
 
-                #Extract the downloaded file and move it to the corresponding location
                 for file in os.listdir(f"{directory}/downloaded_files/"):
                     if file.endswith("Z.csv"):
                         print(f"[cyan][INFO][/cyan] File [cyan]{file}[/cyan] downloaded.")
@@ -300,73 +157,69 @@ while True:
                         )
                         break
 
-                #Move to the next page
                 try:
-                    NextPageBtn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((
+                    next_page_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((
                         By.CSS_SELECTOR,
                         "#tab-view > div:nth-child(3) > div > div.paging.flex-row > div:nth-child(4) > a"
                     )))
-
-                    #Use Javascript to scroll down to the next page button
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", NextPageBtn)
-                    NextPageBtn.click()
-
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", next_page_btn)
+                    next_page_btn.click()
                     time.sleep(2)
                     page += 1
-
                 except TimeoutException:
                     print("[cyan][INFO][/cyan] No more pages to download.")
                     getting_shipments = False
 
-        #Close Firefox
         driver.quit()
 
-        ###############################################################################################################################################
-        #Get today's date
-        Date = datetime.now().strftime("%m/%d/%Y")
-        
-        #Update the queries in the "Shipment" workbook
+        date_str: str = datetime.now().strftime("%m/%d/%Y")
+
         print("[cyan][INFO][/cyan] Updating queries in the [cyan]Shipment[/cyan] workbook.")
-        ShipmentWbPath = f"{directory}/Amazon/Reports/Shipments.xlsm"
-        ShipmentWb = xw.Book(ShipmentWbPath)
-        DataValSh = ShipmentWb.sheets("DataVal")
-        custom_functions.update_directory(ShipmentWb)
+        shipment_wb = xw.Book(shipment_wb_path)
+        data_val_sh = shipment_wb.sheets("DataVal")
+        custom_functions.update_directory(shipment_wb)
 
-        #Get the latest workbook Status
-        status = DataValSh.range("B2").value
-        send = False if status == "Sent" else True
+        status = data_val_sh.range("B2").value
+        send = status != "Sent"
 
-        #Update the status in the workbook
-        if send:
-            DataValSh.range("B2").value = "Sent"
-        else:
-            DataValSh.range("B2").value = "Not Sent"
+        data_val_sh.range("B2").value = "Sent" if send else "Not Sent"
 
-        #Refresh the queries, save and close the workbook
-        Refresh = ShipmentWb.macro("Module1.Refresh")
-        Refresh()
+        refresh = shipment_wb.macro("Module1.Refresh")
+        refresh()
         time.sleep(30)
 
         print("[cyan][INFO][/cyan] Saving and closing the workbook.")
-        ShipmentWb.save()
-        ShipmentWb.close()
+        shipment_wb.save()
+        shipment_wb.close()
         time.sleep(60)
 
         if send:
-            #Send email notification
             print("[cyan][INFO][/cyan] Sending email.")
             outlook.send_email(
                 account=sender_email,
-                subject=f"Shipments Report - {Date}",
+                subject=f"Shipments Report - {date_str}",
                 body=body,
                 to=to_email,
                 cc=cc_email,
-                attachments=[ShipmentWbPath],
+                attachments=[shipment_wb_path],
                 show=True,
                 send=True
             )
-
             print("[cyan][INFO][/cyan] Email has been sent.")
 
-    #Sleep 60 seconds before starting over
-    time.sleep(60)
+    except (KeyboardInterrupt, SystemExit):
+        print("[yellow][WARNING][/yellow] Script interrupted by user.")
+        raise SystemExit(0)
+
+    except Exception:
+        alert_utils.handle_crash(driver, traceback.format_exc(), "Shipments")
+        raise SystemExit(1)
+
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+
+
+run_on_schedule(main, hour=9, minute=0, day_of_week="tue")
