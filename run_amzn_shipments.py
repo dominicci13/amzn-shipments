@@ -12,7 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
 from fc_utils.config_utils import get_env
 from fc_utils.schedule_utils import run_on_schedule
-from fc_utils.accounts import AMAZON_ACCOUNT_NAMES
+from fc_utils.accounts import AMAZON_ACCOUNT_NAMES, AMAZON_URLS
 from selenium.common.exceptions import TimeoutException
 
 directory: str = os.getcwd()
@@ -25,7 +25,7 @@ to_email: list[str] = [e.strip() for e in os.getenv("TO_EMAIL", "").split(",") i
 cc_email: list[str] = [e.strip() for e in os.getenv("CC_EMAIL", "").split(",") if e.strip()]
 user_data_dir: str = get_env("CHROME_USER_DATA_DIR", required=True)
 
-amzn_accounts = accounts.Amazon()
+amzn_accounts = AMAZON_URLS
 shipment_wb_path: str = f"{directory}/Amazon/Reports/Shipments.xlsm"
 
 # within_range selects the date filter applied to shipments:
