@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
 from fc_utils.config_utils import get_env
 from fc_utils.schedule_utils import run_on_schedule
+from fc_utils.ui_utils import ask_user
 from fc_utils.accounts import AMAZON_ACCOUNT_NAMES, AMAZON_URLS
 from selenium.common.exceptions import TimeoutException
 
@@ -177,8 +178,6 @@ def main() -> None:
         print("[cyan][INFO][/cyan] Updating queries in the [cyan]Shipment[/cyan] workbook.")
         shipment_wb = xw.Book(shipment_wb_path)
         data_val_sh = shipment_wb.sheets("DataVal")
-        custom_functions.update_directory(shipment_wb)
-
         status = data_val_sh.range("B2").value
         send = status != "Sent"
 
@@ -222,4 +221,6 @@ def main() -> None:
             pass
 
 
+if ask_user("Run now?", "Amazon Shipments"):
+    main()
 run_on_schedule(main, hour=9, minute=0, day_of_week="tue")
