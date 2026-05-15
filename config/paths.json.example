@@ -1,0 +1,5 @@
+{
+    "download_path": "downloaded_files",
+    "shipment_wb_path": "C:/path/to/your/onedrive/Amazon/Reports/Shipments.xlsm",
+    "shipments_root": "C:/path/to/your/onedrive/Amazon/Shipments"
+}

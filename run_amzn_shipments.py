@@ -1,9 +1,9 @@
 import os
+import json
 import time
 import shutil
 import traceback
 import xlwings as xw
-from rich import print
 from dotenv import load_dotenv
 from datetime import datetime
 from selenium.webdriver.common.by import By
@@ -13,11 +13,11 @@ from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
 from fc_utils.config_utils import get_env
 from fc_utils.schedule_utils import run_on_schedule
 from fc_utils.ui_utils import ask_user
-from fc_utils.accounts import AMAZON_ACCOUNT_NAMES, AMAZON_URLS
+from fc_utils.logging_utils import setup_logging
 from selenium.common.exceptions import TimeoutException
 
-directory: str = os.getcwd()
 
+log = setup_logging("amzn_shipments")
 load_dotenv()
 username: str = os.getenv("AMZN_email")
 password: str = os.getenv("AMZN_pass")
@@ -26,8 +26,10 @@ to_email: list[str] = [e.strip() for e in os.getenv("TO_EMAIL", "").split(",") i
 cc_email: list[str] = [e.strip() for e in os.getenv("CC_EMAIL", "").split(",") if e.strip()]
 user_data_dir: str = get_env("CHROME_USER_DATA_DIR", required=True)
 
-amzn_accounts = AMAZON_URLS
-shipment_wb_path: str = f"{directory}/Amazon/Reports/Shipments.xlsm"
+with open("config/paths.json") as f:
+    paths = json.load(f)
+
+shipment_wb_path: str = paths["shipment_wb_path"]
 
 # within_range selects the date filter applied to shipments:
 # 1=All  2=24h  3=1 week  4=30 days  5=90 days  6=1 year  7=Custom
@@ -54,29 +56,23 @@ def main() -> None:
     try:
         driver = chrome.start_browser(user_data_dir, "Default", headless=True)
 
-        for account, url in amzn_accounts.items():
-            root = AMAZON_ACCOUNT_NAMES[account]
+        for account, root, url in accounts.iter_amazon_accounts():
 
-            print(f"[cyan][INFO][/cyan] Removing all files in the shipments folder for [cyan]{root}[/cyan].")
-            for file in os.listdir(f"{directory}/Amazon/Shipments/{root}/"):
-                os.remove(os.path.join(f"{directory}/Amazon/Shipments/{root}/", file))
+            log.info(f"Removing all files in the shipments folder for [cyan]{root}[/cyan].")
+            account_shipments_dir = f"{paths['shipments_root']}/{root}"
+            for file in os.listdir(account_shipments_dir):
+                os.remove(os.path.join(account_shipments_dir, file))
 
-            print(f"[cyan][INFO][/cyan] Navigating to [cyan]{root}[/cyan] account.")
+            log.info(f"Navigating to [cyan]{root}[/cyan] account.")
             driver.get(url)
             driver.switch_to_window(0)
 
             try:
-                code = None
-                while not code:
-                    code = accounts.amazon_login(driver, username, username, password)
-                    if not code:
-                        print("[bold red][ERROR][/bold red] Failed to log in to Amazon. Trying again.")
-                        driver.get(url)
-                        driver.switch_to_window(0)
+                accounts.amazon_login(driver, username, username, password, retry_url=url)
             except TimeoutException:
                 pass
 
-            print("[cyan][INFO][/cyan] Getting shipments.")
+            log.info("Getting shipments.")
             driver.get("https://sellercentral.amazon.com/gp/ssof/shipping-queue.html/ref=xx_fbashipq_favb_xx#fbashipment")
             time.sleep(2)
             driver.switch_to_window(0)
@@ -100,7 +96,7 @@ def main() -> None:
                 )
                 time.sleep(3)
             except TimeoutException:
-                print(f"[cyan][INFO][/cyan] No results on [cyan]{root}[/cyan] account. Moving to next account.")
+                log.info(f"No results on [cyan]{root}[/cyan] account. Moving to next account.")
                 continue
 
             try:
@@ -121,7 +117,7 @@ def main() -> None:
                 time.sleep(2)
 
             except TimeoutException:
-                print("[bold red][TimeoutException][/bold red] Date filter element not found.")
+                log.error("[TimeoutException] Date filter element not found.")
                 driver.save_screenshot("Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
@@ -138,23 +134,23 @@ def main() -> None:
                 time.sleep(2)
 
             except TimeoutException:
-                print("[bold red][TimeoutException][/bold red] Status filter element not found.")
+                log.error("[TimeoutException] Status filter element not found.")
                 driver.save_screenshot("Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
             page = 1
             getting_shipments = True
             while getting_shipments:
-                print("[cyan][INFO][/cyan] Downloading file.")
+                log.info("Downloading file.")
                 driver.find_element(By.CSS_SELECTOR, "#export-link-container > a").click()
                 time.sleep(5)
 
-                for file in os.listdir(f"{directory}/downloaded_files/"):
+                for file in os.listdir(paths["download_path"]):
                     if file.endswith("Z.csv"):
-                        print(f"[cyan][INFO][/cyan] File [cyan]{file}[/cyan] downloaded.")
+                        log.info(f"File [cyan]{file}[/cyan] downloaded.")
                         shutil.move(
-                            f"{directory}/downloaded_files/{file}",
-                            f"{directory}/Amazon/Shipments/{root}/Shipments - Page {page}.csv"
+                            f"{paths['download_path']}/{file}",
+                            f"{paths['shipments_root']}/{root}/Shipments - Page {page}.csv"
                         )
                         break
 
@@ -168,14 +164,14 @@ def main() -> None:
                     time.sleep(2)
                     page += 1
                 except TimeoutException:
-                    print("[cyan][INFO][/cyan] No more pages to download.")
+                    log.info("No more pages to download.")
                     getting_shipments = False
 
         driver.quit()
 
         date_str: str = datetime.now().strftime("%m/%d/%Y")
 
-        print("[cyan][INFO][/cyan] Updating queries in the [cyan]Shipment[/cyan] workbook.")
+        log.info("Updating queries in the [cyan]Shipment[/cyan] workbook.")
         shipment_wb = xw.Book(shipment_wb_path)
         data_val_sh = shipment_wb.sheets("DataVal")
         status = data_val_sh.range("B2").value
@@ -187,13 +183,13 @@ def main() -> None:
         refresh()
         time.sleep(30)
 
-        print("[cyan][INFO][/cyan] Saving and closing the workbook.")
+        log.info("Saving and closing the workbook.")
         shipment_wb.save()
         shipment_wb.close()
         time.sleep(60)
 
         if send:
-            print("[cyan][INFO][/cyan] Sending email.")
+            log.info("Sending email.")
             outlook.send_email(
                 account=sender_email,
                 subject=f"Shipments Report - {date_str}",
@@ -204,10 +200,10 @@ def main() -> None:
                 show=True,
                 send=True
             )
-            print("[cyan][INFO][/cyan] Email has been sent.")
+            log.info("Email has been sent.")
 
     except (KeyboardInterrupt, SystemExit):
-        print("[yellow][WARNING][/yellow] Script interrupted by user.")
+        log.warning("Script interrupted by user.")
         raise SystemExit(0)
 
     except Exception:
