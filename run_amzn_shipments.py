@@ -30,6 +30,7 @@ with open("config/paths.json") as f:
     paths = json.load(f)
 
 shipment_wb_path: str = paths["shipment_wb_path"]
+screenshots_root: str = paths["screenshots_root"]
 
 # within_range selects the date filter applied to shipments:
 # 1=All  2=24h  3=1 week  4=30 days  5=90 days  6=1 year  7=Custom
@@ -118,7 +119,7 @@ def main() -> None:
 
             except TimeoutException:
                 log.error("[TimeoutException] Date filter element not found.")
-                driver.save_screenshot("Shipments error.png")
+                driver.save_screenshot(f"{screenshots_root}/Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
             try:
@@ -135,7 +136,7 @@ def main() -> None:
 
             except TimeoutException:
                 log.error("[TimeoutException] Status filter element not found.")
-                driver.save_screenshot("Shipments error.png")
+                driver.save_screenshot(f"{screenshots_root}/Shipments error.png")
                 raise RuntimeError("Critical element not found; aborting.")
 
             page = 1
@@ -172,21 +173,27 @@ def main() -> None:
         date_str: str = datetime.now().strftime("%m/%d/%Y")
 
         log.info("Updating queries in the [cyan]Shipment[/cyan] workbook.")
-        shipment_wb = xw.Book(shipment_wb_path)
-        data_val_sh = shipment_wb.sheets("DataVal")
-        status = data_val_sh.range("B2").value
-        send = status != "Sent"
+        with xw.App(visible=False) as excel:
+            excel.display_alerts = False
+            excel.screen_updating = False
 
-        data_val_sh.range("B2").value = "Sent" if send else "Not Sent"
+            shipment_wb = excel.books.open(shipment_wb_path)
 
-        refresh = shipment_wb.macro("Module1.Refresh")
-        refresh()
-        time.sleep(30)
+            shipment_wb.macro("Module1.Refresh")()
+            time.sleep(30)
 
-        log.info("Saving and closing the workbook.")
-        shipment_wb.save()
-        shipment_wb.close()
-        time.sleep(60)
+            data_val_sh = shipment_wb.sheets("DataVal")
+            status = data_val_sh.range("B2").value
+            send = status != "Sent"
+            data_val_sh.range("B2").value = "Sent" if send else "Not Sent"
+
+            log.info("Saving and closing the workbook.")
+            shipment_wb.save()
+            shipment_wb.close()
+
+            excel.display_alerts = True
+            excel.screen_updating = True
+            time.sleep(60)
 
         if send:
             log.info("Sending email.")
