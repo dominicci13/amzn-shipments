@@ -8,6 +8,8 @@ __pycache__/
 # Logs and outputs
 logs/
 output/
+downloaded_files/
+screenshots/
 
 # Local config / secrets
 config/*.json
@@ -20,6 +22,7 @@ build/
 
 # Claude
 .claude/
+*.db
 
 # Data files
 *.xlsx
