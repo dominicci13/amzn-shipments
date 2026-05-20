@@ -9,7 +9,7 @@ from datetime import datetime
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils
+from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils, save_debug_screenshot
 from fc_utils.config_utils import get_env
 from fc_utils.schedule_utils import run_on_schedule
 from fc_utils.ui_utils import ask_user
@@ -30,7 +30,6 @@ with open("config/paths.json") as f:
     paths = json.load(f)
 
 shipment_wb_path: str = paths["shipment_wb_path"]
-screenshots_root: str = paths["screenshots_root"]
 
 # within_range selects the date filter applied to shipments:
 # 1=All  2=24h  3=1 week  4=30 days  5=90 days  6=1 year  7=Custom
@@ -119,7 +118,7 @@ def main() -> None:
 
             except TimeoutException:
                 log.error("[TimeoutException] Date filter element not found.")
-                driver.save_screenshot(f"{screenshots_root}/Shipments error.png")
+                save_debug_screenshot(driver, root=root, section="main", description="date_filter_not_found")
                 raise RuntimeError("Critical element not found; aborting.")
 
             try:
@@ -136,7 +135,7 @@ def main() -> None:
 
             except TimeoutException:
                 log.error("[TimeoutException] Status filter element not found.")
-                driver.save_screenshot(f"{screenshots_root}/Shipments error.png")
+                save_debug_screenshot(driver, root=root, section="main", description="status_filter_not_found")
                 raise RuntimeError("Critical element not found; aborting.")
 
             page = 1
