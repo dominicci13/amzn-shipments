@@ -172,8 +172,6 @@ def main() -> None:
 
         log.info("Updating queries in the [cyan]Shipment[/cyan] workbook.")
         refresh_workbook(shipment_wb_path, wait=0)
-        # Let Excel fully release the file before attaching it to the email
-        time.sleep(60)
 
         log.info("Sending email.")
         outlook.send_email(
