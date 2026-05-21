@@ -1,6 +1,6 @@
 # amzn-shipments
 
-Downloads and processes Amazon FBA shipment data from Seller Central, updates a SQL Server database, and emails a weekly summary. Runs on a Tuesday schedule via APScheduler.
+Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account, drops it as per-account CSVs that the connected workbook reads via Power Query, refreshes the workbook synchronously, and emails it. Runs **Tuesday 09:00 local** via APScheduler.
 
 ## Setup
 
@@ -15,9 +15,11 @@ pip install git+https://github.com/dominicci13/shared-python-utils.git
 
 ```bash
 cp .env.example .env
+cp config/accounts.json.example config/accounts.json
+cp config/paths.json.example config/paths.json
 ```
 
-Edit `.env` with your credentials.
+Fill in your credentials in `.env`, your Amazon account map in `accounts.json`, and your local OneDrive paths in `paths.json`.
 
 ## Run
 
@@ -25,7 +27,27 @@ Edit `.env` with your credentials.
 python run_amzn_shipments.py
 ```
 
-The script runs automatically at 09:00 on Tuesdays via APScheduler.
+Prompts whether to run immediately, then schedules itself to run **Tue 09:00 local** via APScheduler.
+
+## Project layout
+
+```
+amzn-shipments/
+├── run_amzn_shipments.py       # Single-file entry — scrape + refresh + email
+├── config/
+│   ├── accounts.json           # Amazon account names + Seller Central URLs (gitignored)
+│   ├── accounts.json.example   # Template
+│   ├── paths.json              # Workbook + downloads paths (gitignored)
+│   └── paths.json.example      # Template
+├── vba/
+│   └── modUtilities.bas        # Version-controlled VBA — synchronous `refresh` sub
+├── logs/                       # Rotating log files (gitignored)
+├── screenshots/                # Debug screenshots written on browser errors (gitignored)
+├── output/                     # Future use; currently empty (gitignored)
+├── requirements.txt
+├── LICENSE
+└── README.md
+```
 
 ## Environment Variables
 
@@ -36,4 +58,8 @@ The script runs automatically at 09:00 on Tuesdays via APScheduler.
 | `CHROME_USER_DATA_DIR` | Path to Chrome automation profile directory |
 | `SENDER_EMAIL` | Outlook account used to send the report email |
 | `TO_EMAIL` | Comma-separated list of recipient email addresses |
-| `CC_EMAIL` | Comma-separated list of CC email addresses |
+| `CC_EMAIL` | Optional comma-separated list of CC email addresses |
+
+## License
+
+MIT — see [LICENSE](LICENSE).

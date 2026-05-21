@@ -9,10 +9,14 @@ __pycache__/
 logs/
 output/
 downloaded_files/
-screenshots/
+
+# Screenshots — ignore everything except .gitkeep so the folder is tracked
+screenshots/*
+!screenshots/.gitkeep
 
 # Local config / secrets
 config/*.json
+!config/*.json.example
 .env
 
 # Build artifacts
@@ -20,8 +24,10 @@ config/*.json
 dist/
 build/
 
-# Claude
+# Working artifacts
+tasks/
 .claude/
+CLAUDE.md
 *.db
 
 # Data files
@@ -32,4 +38,3 @@ build/
 
 # OS junk
 .DS_Store
-Thumbs.db
