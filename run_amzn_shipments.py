@@ -75,7 +75,7 @@ def main() -> None:
         for account, root, url in accounts.iter_amazon_accounts():
 
             log.info(f"Removing all files in the shipments folder for [cyan]{root}[/cyan].")
-            account_shipments_dir = f"{paths['shipments_root']}/{root}"
+            account_shipments_dir = f"{_paths['shipments_root']}/{root}"
             for file in os.listdir(account_shipments_dir):
                 os.remove(os.path.join(account_shipments_dir, file))
 
@@ -161,12 +161,12 @@ def main() -> None:
                 driver.find_element(By.CSS_SELECTOR, "#export-link-container > a").click()
                 time.sleep(5)
 
-                for file in os.listdir(paths["download_path"]):
+                for file in os.listdir(_paths["download_path"]):
                     if file.endswith("Z.csv"):
                         log.info(f"File [cyan]{file}[/cyan] downloaded.")
                         shutil.move(
-                            f"{paths['download_path']}/{file}",
-                            f"{paths['shipments_root']}/{root}/Shipments - Page {page}.csv"
+                            f"{_paths['download_path']}/{file}",
+                            f"{_paths['shipments_root']}/{root}/Shipments - Page {page}.csv"
                         )
                         break
 
