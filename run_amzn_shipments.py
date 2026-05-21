@@ -46,12 +46,14 @@ within_range: int = 6
 _range_map = {1: "ALL", 2: "1", 3: "7", 4: "30", 5: "90", 6: "365", 7: "CUSTOM"}
 range_value: str = _range_map[within_range]
 
-body = f"""
-{greeting_for()},<br><br>
-Please find attached the Shipments report updated for today.<br><br>
-If any questions, please let me know.<br><br>
-Thanks,<br><br>
-"""
+def _email_body() -> str:
+    """Build the email body with the time-of-day greeting."""
+    return (
+        f"{greeting_for()},<br><br>"
+        "Please find attached the Shipments report updated for today.<br><br>"
+        "If any questions, please let me know.<br><br>"
+        "Thanks,<br><br>"
+    )
 
 
 def main() -> None:
@@ -190,7 +192,7 @@ def main() -> None:
         outlook.send_email(
             account=sender_email,
             subject=f"Shipments Report - {date_str}",
-            body=body,
+            body=_email_body(),
             to=to_email,
             cc=cc_email,
             attachments=[shipments_wb_path],
