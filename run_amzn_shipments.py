@@ -11,21 +11,23 @@ Once per week (Tue 09:00 local) this script:
 5. Emails the refreshed workbook to the configured recipients.
 """
 import os
-import time
 import shutil
+import time
 import traceback
-from pathlib import Path
-from dotenv import load_dotenv
 from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils, save_debug_screenshot, refresh_workbook, greeting_for
+from selenium.webdriver.support.ui import WebDriverWait
+
+from fc_utils import accounts, alert_utils, chrome, custom_functions, greeting_for, outlook, refresh_workbook, save_debug_screenshot
 from fc_utils.config_utils import get_env, load_config_safe
+from fc_utils.logging_utils import setup_logging
 from fc_utils.schedule_utils import run_on_schedule
 from fc_utils.ui_utils import ask_user
-from fc_utils.logging_utils import setup_logging
-from selenium.common.exceptions import TimeoutException
 
 
 log = setup_logging("amzn_shipments")
