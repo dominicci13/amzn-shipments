@@ -39,8 +39,8 @@ to_email: list[str] = [e.strip() for e in (get_env("TO_EMAIL", required=True) or
 cc_email: list[str] = [e.strip() for e in (get_env("CC_EMAIL", default="") or "").split(",") if e.strip()]
 user_data_dir: str = get_env("CHROME_USER_DATA_DIR", required=True)
 
-paths = load_config_safe(Path(__file__).resolve().parent / "config" / "paths.json")
-shipments_wb_path: str = paths["shipments_wb_path"]
+_paths = load_config_safe(Path(__file__).resolve().parent / "config" / "paths.json")
+shipments_wb_path: str = _paths["shipments_wb_path"]
 
 # within_range selects the date filter applied to shipments:
 # 1=All  2=24h  3=1 week  4=30 days  5=90 days  6=1 year  7=Custom
