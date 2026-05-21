@@ -3,13 +3,12 @@ import json
 import time
 import shutil
 import traceback
-import xlwings as xw
 from dotenv import load_dotenv
 from datetime import datetime
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils, save_debug_screenshot
+from fc_utils import chrome, accounts, custom_functions, outlook, alert_utils, save_debug_screenshot, refresh_workbook
 from fc_utils.config_utils import get_env
 from fc_utils.schedule_utils import run_on_schedule
 from fc_utils.ui_utils import ask_user
@@ -172,21 +171,9 @@ def main() -> None:
         date_str: str = datetime.now().strftime("%m/%d/%Y")
 
         log.info("Updating queries in the [cyan]Shipment[/cyan] workbook.")
-        with xw.App(visible=False) as excel:
-            excel.display_alerts = False
-            excel.screen_updating = False
-
-            shipment_wb = excel.books.open(shipment_wb_path)
-
-            shipment_wb.macro("modUtilities.refresh")()
-
-            log.info("Saving and closing the workbook.")
-            shipment_wb.save()
-            shipment_wb.close()
-
-            excel.display_alerts = True
-            excel.screen_updating = True
-            time.sleep(60)
+        refresh_workbook(shipment_wb_path, wait=0)
+        # Let Excel fully release the file before attaching it to the email
+        time.sleep(60)
 
         log.info("Sending email.")
         outlook.send_email(
