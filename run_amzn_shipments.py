@@ -178,13 +178,7 @@ def main() -> None:
 
             shipment_wb = excel.books.open(shipment_wb_path)
 
-            shipment_wb.macro("Module1.Refresh")()
-            time.sleep(30)
-
-            data_val_sh = shipment_wb.sheets("DataVal")
-            status = data_val_sh.range("B2").value
-            send = status != "Sent"
-            data_val_sh.range("B2").value = "Sent" if send else "Not Sent"
+            shipment_wb.macro("modUtilities.refresh")()
 
             log.info("Saving and closing the workbook.")
             shipment_wb.save()
@@ -194,19 +188,18 @@ def main() -> None:
             excel.screen_updating = True
             time.sleep(60)
 
-        if send:
-            log.info("Sending email.")
-            outlook.send_email(
-                account=sender_email,
-                subject=f"Shipments Report - {date_str}",
-                body=body,
-                to=to_email,
-                cc=cc_email,
-                attachments=[shipment_wb_path],
-                show=True,
-                send=True
-            )
-            log.info("Email has been sent.")
+        log.info("Sending email.")
+        outlook.send_email(
+            account=sender_email,
+            subject=f"Shipments Report - {date_str}",
+            body=body,
+            to=to_email,
+            cc=cc_email,
+            attachments=[shipment_wb_path],
+            show=True,
+            send=True
+        )
+        log.info("Email has been sent.")
 
     except (KeyboardInterrupt, SystemExit):
         log.warning("Script interrupted by user.")
