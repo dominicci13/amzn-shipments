@@ -2,32 +2,11 @@
 
 Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account, drops it as per-account CSVs that the connected workbook reads via Power Query, refreshes the workbook synchronously, and emails it. Runs **Tuesday 09:00 local** via APScheduler.
 
-## Setup
+## Weekly flow
 
-### 1. Install dependencies
-
-```bash
-pip install -r requirements.txt
-pip install git+https://github.com/dominicci13/shared-python-utils.git
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-cp config/accounts.json.example config/accounts.json
-cp config/paths.json.example config/paths.json
-```
-
-Fill in your credentials in `.env`, your Amazon account map in `accounts.json`, and your local OneDrive paths in `paths.json`.
-
-## Run
-
-```bash
-python run_amzn_shipments.py
-```
-
-Prompts whether to run immediately, then schedules itself to run **Tue 09:00 local** via APScheduler.
+1. **Per-account scrape** — for each Amazon account, log into Seller Central and pull the FBA shipment data.
+2. **CSV drop** — write the data as per-account CSVs that the connected workbook reads via Power Query.
+3. **Refresh + email** — refresh the workbook synchronously and email the refreshed workbook via Outlook.
 
 ## Project layout
 
@@ -49,7 +28,34 @@ amzn-shipments/
 └── README.md
 ```
 
-## Environment Variables
+## Setup
+
+### 1. Install dependencies
+
+```bash
+pip install -r requirements.txt
+pip install git+https://github.com/dominicci13/shared-python-utils.git
+```
+
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+cp config/accounts.json.example config/accounts.json
+cp config/paths.json.example config/paths.json
+```
+
+Fill in your credentials in `.env`, your Amazon account map in `accounts.json`, and your local OneDrive paths in `paths.json`.
+
+### 3. Run
+
+```bash
+python run_amzn_shipments.py
+```
+
+Prompts whether to run immediately, then schedules itself to run **Tue 09:00 local** via APScheduler.
+
+## Environment variables
 
 | Variable | Description |
 |---|---|
