@@ -8,6 +8,60 @@ Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account,
 2. **CSV drop** — write the data as per-account CSVs that the connected workbook reads via Power Query.
 3. **Refresh + email** — refresh the workbook synchronously and email the refreshed workbook via Outlook.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    sched[APScheduler<br/>Tue 09:00] --> loop
+
+    subgraph loop[Per-account export]
+        direction TB
+        login[Amazon login] --> filt[Filter: last 365 days,<br/>closed shipments]
+        filt --> pages[Export every page<br/>as CSV] --> move[Move CSV to<br/>account folder]
+    end
+
+    loop --> refresh[refresh_workbook<br/>Shipments.xlsm]
+    refresh --> email[Outlook email<br/>.xlsm attachment]
+```
+
+## Performance notes
+
+A CSV-export ETL whose Excel side stays unattended:
+
+- **Synchronous Power Query refresh.** `refresh_workbook(path, wait=0)` runs
+  `modUtilities.refresh` so the workbook picks up the freshly-exported CSVs
+  without the script sleeping on an async refresh.
+- **CSV-as-data-source.** Each page of the shipments table is exported to a
+  per-account CSV that the workbook reads via Power Query — Python never
+  touches workbook cells directly.
+- **Fail-fast on missing UI.** When the date/status filter controls don't
+  appear, the script writes a debug screenshot via `save_debug_screenshot`
+  and aborts with a clear error rather than scraping garbage.
+- **Version-controlled VBA.** The `modUtilities.refresh` sub lives in
+  `vba/modUtilities.bas`.
+
+## Logging
+
+```text
+09:00:05 INFO     Navigating to AccountKeyA account.
+09:00:31 INFO     Downloading file.
+09:00:48 INFO     File 1234567890Z.csv downloaded.
+09:02:10 INFO     Updating queries in the Shipment workbook.
+09:02:39 INFO     Email has been sent.
+```
+
+Configured once via the shared helper:
+
+```python
+from seller_automation_utils.logging_utils import setup_logging
+log = setup_logging("amzn_shipments")
+```
+
+`setup_logging` wires a Rich console handler (colorized output, markup
+rendering, rich tracebacks) and a 1 MB rotating file handler writing to
+`logs/amzn_shipments.log`. Available to every automation that imports
+`seller_automation_utils`.
+
 ## Project layout
 
 ```
@@ -30,30 +84,37 @@ amzn-shipments/
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Clone and create the venv
 
-```bash
-pip install -r requirements.txt
-pip install git+https://github.com/dominicci13/shared-python-utils.git
+```powershell
+git clone https://github.com/dominicci13/amzn-shipments.git
+cd amzn-shipments
+py -3.12 -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install git+https://github.com/dominicci13/shared-python-utils.git
 ```
 
-### 2. Configure environment
+### 2. Configure
 
-```bash
-cp .env.example .env
-cp config/accounts.json.example config/accounts.json
-cp config/paths.json.example config/paths.json
+```powershell
+copy .env.example .env
+copy config\accounts.json.example config\accounts.json
+copy config\paths.json.example config\paths.json
 ```
 
-Fill in your credentials in `.env`, your Amazon account map in `accounts.json`, and your local OneDrive paths in `paths.json`.
+Edit each file with real values. All three are gitignored.
 
-### 3. Run
+### 3. VBA module (one-time per workbook)
 
-```bash
-python run_amzn_shipments.py
+`Shipments.xlsm` must contain the canonical `modUtilities` from `vba/modUtilities.bas`. Open the workbook in Excel, press **Alt+F11**, insert a module named `modUtilities`, and paste the contents of `vba/modUtilities.bas`. Save the workbook.
+
+### 4. Run
+
+```powershell
+.venv\Scripts\python run_amzn_shipments.py
 ```
 
-Prompts whether to run immediately, then schedules itself to run **Tue 09:00 local** via APScheduler.
+The script prompts "Run now?" — answer **Y** to execute immediately, or **N** to register the APScheduler job and idle until the next **Tue 09:00** trigger.
 
 ## Environment variables
 
