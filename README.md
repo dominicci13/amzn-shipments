@@ -61,6 +61,10 @@ amzn-shipments/
 | `TO_EMAIL` | Comma-separated list of recipient email addresses |
 | `CC_EMAIL` | Optional comma-separated list of CC email addresses |
 
+## Author
+
+Built by **Brian Ramirez** ([@dominicci13](https://github.com/dominicci13)) — automation & AI workflow specialist. More on my [GitHub profile](https://github.com/dominicci13) and [LinkedIn](https://linkedin.com/in/bdramirez).
+
 ## License
 
 [MIT](LICENSE)
