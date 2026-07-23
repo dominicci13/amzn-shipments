@@ -1,6 +1,6 @@
 """Weekly Amazon FBA shipments report.
 
-Once per week (Tue 09:00 local) this script:
+Once per week (Tue 08:40 local) this script:
 
 1. Logs into each Amazon Seller Central account (`AMAZON_URLS`).
 2. Navigates to the FBA shipping queue and applies a date + status filter
@@ -220,4 +220,4 @@ def main() -> None:
 
 if ask_user("Run now?", "Amazon Shipments"):
     main()
-run_on_schedule(main, hour=9, minute=0, day_of_week="tue")
+run_on_schedule(main, hour=8, minute=40, day_of_week="tue")

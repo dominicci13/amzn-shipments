@@ -1,6 +1,6 @@
 # amzn-shipments
 
-Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account, drops it as per-account CSVs that the connected workbook reads via Power Query, refreshes the workbook synchronously, and emails it. Runs **Tuesday 09:00 local** via APScheduler.
+Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account, drops it as per-account CSVs that the connected workbook reads via Power Query, refreshes the workbook synchronously, and emails it. Runs **Tuesday 08:40 local** via APScheduler.
 
 ## Weekly flow
 
@@ -12,7 +12,7 @@ Weekly ETL that pulls FBA shipment data from each Amazon Seller Central account,
 
 ```mermaid
 flowchart LR
-    sched[APScheduler<br/>Tue 09:00] --> loop
+    sched[APScheduler<br/>Tue 08:40] --> loop
 
     subgraph loop[Per-account export]
         direction TB
@@ -114,7 +114,7 @@ Edit each file with real values. All three are gitignored.
 .venv\Scripts\python run_amzn_shipments.py
 ```
 
-The script prompts "Run now?" — answer **Y** to execute immediately, or **N** to register the APScheduler job and idle until the next **Tue 09:00** trigger.
+The script prompts "Run now?" — answer **Y** to execute immediately, or **N** to register the APScheduler job and idle until the next **Tue 08:40** trigger.
 
 ## Environment variables
 
