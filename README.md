@@ -28,17 +28,25 @@ flowchart LR
 
 A CSV-export ETL whose Excel side stays unattended:
 
-- **Synchronous Power Query refresh.** `refresh_workbook(path, wait=0)` runs
-  `modUtilities.refresh` so the workbook picks up the freshly-exported CSVs
-  without the script sleeping on an async refresh.
+- **Synchronous, bounded, checked Power Query refresh.** `refresh_workbook(path,
+  wait=0, timeout=300)` runs `modUtilities.refresh` so the workbook picks up the
+  freshly-exported CSVs without the script sleeping on an async refresh. A failure
+  the macro reports (`Function refresh() As String` returns a reason, never a
+  `MsgBox`) raises `WorkbookRefreshError` with nothing saved; a refresh past 300s
+  (typically a modal on the hidden Excel) makes the library kill only the Excel it
+  started, by pid, and raise the same error. Neither is retried and no email goes
+  out; the crash handler fires. Only a transient `pywintypes.com_error` is retried,
+  5s apart, three attempts in all. Nothing kills Excel by image name. The longest
+  refresh in the logs is 36s.
 - **CSV-as-data-source.** Each page of the shipments table is exported to a
   per-account CSV that the workbook reads via Power Query — Python never
   touches workbook cells directly.
 - **Fail-fast on missing UI.** When the date/status filter controls don't
   appear, the script writes a debug screenshot via `save_debug_screenshot`
   and aborts with a clear error rather than scraping garbage.
-- **Version-controlled VBA.** The `modUtilities.refresh` sub lives in
-  `vba/modUtilities.bas`.
+- **Version-controlled VBA.** The `modUtilities.refresh` macro lives in
+  `vba/modUtilities.bas`. A workbook still holding the older `Sub refresh` keeps
+  working: the library reads its empty return as success.
 
 ## Logging
 
@@ -73,7 +81,9 @@ amzn-shipments/
 │   ├── paths.json              # Workbook + downloads paths (gitignored)
 │   └── paths.json.example      # Template
 ├── vba/
-│   └── modUtilities.bas        # Version-controlled VBA — synchronous `refresh` sub
+│   └── modUtilities.bas        # Version-controlled VBA — `refresh` returns "" or a failure reason
+├── tests/                      # pytest: refresh retry/timeout/no-email-on-failure (fakes only)
+├── pytest.ini                  # disables the broken pytest-html / seleniumbase plugins
 ├── logs/                       # Rotating log files (gitignored)
 ├── screenshots/                # Debug screenshots written on browser errors (gitignored)
 ├── output/                     # Future use; currently empty (gitignored)
@@ -106,7 +116,7 @@ Edit each file with real values. All three are gitignored.
 
 ### 3. VBA module (one-time per workbook)
 
-`Shipments.xlsm` must contain the canonical `modUtilities` from `vba/modUtilities.bas`. Open the workbook in Excel, press **Alt+F11**, insert a module named `modUtilities`, and paste the contents of `vba/modUtilities.bas`. Save the workbook.
+`Shipments.xlsm` must contain the canonical `modUtilities` from `vba/modUtilities.bas`. A brand-new workbook may get its first copy by hand: open it in Excel, press **Alt+F11**, insert a module named `modUtilities`, and paste the contents of `vba/modUtilities.bas`. Save the workbook. Any later change to the `.bas` is deployed with `fleet-control\tools\vba_swap.py` (procedure `refresh`), never re-pasted: it backs up the workbook, refuses if it is open, verifies the swap with olevba, and restores the backup on failure. Register the backup in the fleet's vault backup registry.
 
 ### 4. Run
 
@@ -115,6 +125,14 @@ Edit each file with real values. All three are gitignored.
 ```
 
 The script prompts "Run now?" — answer **Y** to execute immediately, or **N** to register the APScheduler job and idle until the next **Tue 08:40** trigger.
+
+### 5. Tests
+
+```powershell
+.venv\Scripts\python -m pytest
+```
+
+Fakes only: no browser, Excel or Outlook is opened, and nothing is written to the run log.
 
 ## Environment variables
 

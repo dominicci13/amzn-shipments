@@ -7,9 +7,16 @@ Once per week (Tue 08:40 local) this script:
    (defaults: last 365 days, closed shipments only).
 3. Downloads every page of the filtered shipments table as CSV per account.
 4. Refreshes the Shipments.xlsm workbook (synchronous `modUtilities.refresh`)
-   so its Power Query connections pick up the freshly-downloaded CSVs.
+   so its Power Query connections pick up the freshly-downloaded CSVs. The
+   refresh goes through the library's `refresh_workbook(timeout=REFRESH_TIMEOUT_SEC)`:
+   a hang (a modal on the hidden Excel) kills only the Excel that call started, a
+   failure the macro reports is raised as `WorkbookRefreshError` with nothing saved,
+   and either one reaches the crash handler with no email sent. Only a COM error is
+   retried, three attempts in all.
 5. Emails the refreshed workbook to the configured recipients.
 """
+from __future__ import annotations
+
 import os
 import shutil
 import time
@@ -17,7 +24,9 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+import pywintypes
 from dotenv import load_dotenv
+from rich.markup import escape
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -48,6 +57,13 @@ within_range: int = 6
 _range_map = {1: "ALL", 2: "1", 3: "7", 4: "30", 5: "90", 6: "365", 7: "CUSTOM"}
 range_value: str = _range_map[within_range]
 
+# Longest refresh in logs/amzn_shipments.log (19 runs, 2026-05-21 to 2026-09-22) was 36s,
+# on 2026-09-08; 300s is the minimum bound and ~8x that.
+REFRESH_TIMEOUT_SEC: int = 300
+MAX_REFRESH_ATTEMPTS: int = 3
+REFRESH_RETRY_DELAY_SEC: int = 5
+
+
 def _email_body() -> str:
     """Build the email body with the time-of-day greeting."""
     return (
@@ -56,6 +72,37 @@ def _email_body() -> str:
         "If any questions, please let me know.<br><br>"
         "Thanks,<br><br>"
     )
+
+
+def _refresh_with_retry(wb_path: str) -> None:
+    """Refresh the workbook through the library's checked, time-bounded refresh.
+
+    A ``pywintypes.com_error`` (Excel briefly holding a COM lock) is retried, up to
+    ``MAX_REFRESH_ATTEMPTS`` calls in all, ``REFRESH_RETRY_DELAY_SEC`` apart. The
+    library ends its own Excel on every path, so nothing is killed here between
+    attempts. ``WorkbookRefreshError`` (the macro reported a failure, or the refresh
+    overran ``REFRESH_TIMEOUT_SEC`` and the library killed its own Excel by pid) is
+    not transient and is never retried; nothing is saved in either case.
+
+    Args:
+        wb_path (str): Full path to the .xlsm workbook to refresh.
+
+    Raises:
+        pywintypes.com_error: If every attempt failed with a COM error.
+        WorkbookRefreshError: On the first failure the macro reports, or on a timeout.
+    """
+    for attempt in range(1, MAX_REFRESH_ATTEMPTS + 1):
+        try:
+            refresh_workbook(wb_path, wait=0, timeout=REFRESH_TIMEOUT_SEC)
+            return
+        except pywintypes.com_error as exc:
+            if attempt == MAX_REFRESH_ATTEMPTS:
+                raise
+            log.error(
+                f"COM error refreshing the Shipments workbook "
+                f"(attempt {attempt}/{MAX_REFRESH_ATTEMPTS}): {escape(str(exc))}. Retrying."
+            )
+            time.sleep(REFRESH_RETRY_DELAY_SEC)
 
 
 def main() -> None:
@@ -188,7 +235,7 @@ def main() -> None:
         date_str: str = datetime.now().strftime("%m/%d/%Y")
 
         log.info("Updating queries in the [cyan]Shipment[/cyan] workbook.")
-        refresh_workbook(shipments_wb_path, wait=0)
+        _refresh_with_retry(shipments_wb_path)
 
         log.info("Sending email.")
         outlook.send_email(
@@ -218,6 +265,7 @@ def main() -> None:
             pass
 
 
-if ask_user("Run now?", "Amazon Shipments"):
-    main()
-run_on_schedule(main, hour=8, minute=40, day_of_week="tue")
+if __name__ == "__main__":
+    if ask_user("Run now?", "Amazon Shipments"):
+        main()
+    run_on_schedule(main, hour=8, minute=40, day_of_week="tue")
